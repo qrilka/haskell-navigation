@@ -1,0 +1,28 @@
+name: kythe-importer
+version: 0.1.0
+
+dependencies:
+  - attoparsec
+  - base
+  - bytestring
+  - conduit
+  - conduit-extra
+  - Glob
+  - kythe-proto
+  - proto-lens
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - CallGraph.Kythe
+
+executables:
+  entries-to-json:
+    dependencies:
+      - aeson
+      - kythe-importer
+      - lens-family
+      - optparse-applicative
+      - text
+    source-dirs: app
+    main: Main.hs

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# GHC wrapper for indexing Haskell packages.
+# Note that variables INDEXER_OUTPUT_DIR and REALGHC are set outside this script.
+
+log() {
+    echo "$1" >> "$INDEXER_OUTPUT_DIR/$PKG.log"
+}
+
+log "========= FAKE GHC ======="
+log " == pwd: $PWD"
+log "== Passing through.."
+log "$REALGHC $*"
+$REALGHC "$@"
+RESULT=$?
+# $(stack path --compiler_exe) is invoked by `stack build` multiple times,
+# we are only interested when `--make` is specified.
+if [[ "${@#--make}" != "$@" ]]; then
+  PKG=${PWD##*/}
+  log "== Invoking indexer"
+  if ! ghc_kythe_wrapper \
+    --drop_path_prefix './' \
+    --prepend_path_prefix "$PKG/" \
+    -- \
+    "$@" > "$INDEXER_OUTPUT_DIR/$PKG.entries" 2> "$INDEXER_OUTPUT_DIR/$PKG.stderr"; then
+    echo "$PKG had error" >> "$INDEXER_OUTPUT_DIR/errors"
+  fi
+fi
+exit $RESULT

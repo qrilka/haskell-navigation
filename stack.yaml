@@ -1,0 +1,28 @@
+resolver: lts-11.22
+
+packages:
+- kythe-importer
+- haskell-callgraph
+- test-lib
+
+- location:
+    git: https://github.com/mpickering/haskell-indexer.git
+    commit: 915187b85d13eaa0bd79d17284bf4dc908bdca07
+  subdirs:
+  - haskell-indexer-backend-core
+  - haskell-indexer-backend-ghc
+  - haskell-indexer-frontend-kythe
+  - haskell-indexer-translate
+  - haskell-indexer-pathutil
+  - haskell-indexer-pipeline-ghckythe
+  - haskell-indexer-pipeline-ghckythe-wrapper
+  - kythe-proto
+  - kythe-schema
+  - text-offset
+  extra-dep: true
+
+extra-deps:
+- proto-lens-combinators-0.1.0.11
+- proto-lens-protoc-0.3.1.2
+- lens-labels-0.2.0.1
+- proto-lens-0.3.1.0

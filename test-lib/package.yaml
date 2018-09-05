@@ -1,0 +1,11 @@
+name: test-lib
+version: 0.1.0
+
+dependencies:
+  - base >= 4.7
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - A
+    - B
