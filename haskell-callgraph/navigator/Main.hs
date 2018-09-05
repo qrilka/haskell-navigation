@@ -38,11 +38,11 @@ main = do
       initialState = AppState g root [] l
   void $ M.defaultMain app initialState
 
-readCallGraph :: FilePath -> IO CallGraph
-readCallGraph d = runConduitRes $ entriesDir d .| constructCallGraph
+readCallGraph :: FilePath -> IO KCallGraph
+readCallGraph d = runConduitRes $ entriesDir d .| fromStream
 
 data AppState = AppState
-  { graph :: CallGraph
+  { graph :: KCallGraph
   , currentNode :: Vertex
   , history :: [(Int, Vertex)]
   , list :: L.List () Text
@@ -73,7 +73,7 @@ goBack s@AppState {..}
     let (pos, prev):rest = history
     in s {currentNode = prev, list = listChildren graph prev pos, history = rest}
 
-listChildren :: CallGraph -> Vertex -> Int -> L.List () Text
+listChildren :: KCallGraph -> Vertex -> Int -> L.List () Text
 listChildren g v pos = list & L.listSelectedL ?~ pos
   where
     list = L.list () (V.fromList labels) 1 

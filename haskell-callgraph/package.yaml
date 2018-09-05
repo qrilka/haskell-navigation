@@ -15,6 +15,15 @@ library:
   exposed-modules:
     - CallGraph
 
+tests:
+  spec:
+    source-dirs: test
+    main: Spec.hs
+    dependencies:
+      - hspec
+      - haskell-callgraph
+    build-tools: hspec-discover
+
 executables:
   query-tool:
     source-dirs: query-tool
@@ -22,23 +31,14 @@ executables:
     dependencies:
       - haskell-callgraph
       - kythe-importer
+      - optparse-applicative
   navigator:
     source-dirs: navigator
     dependencies:
-#      - attoparsec
-#      - base
       - brick
-#      - bytestring
-#      - conduit
-#      - conduit-extra
-#      - containers
-#      - kythe-proto
-#      - lens-family
       - haskell-callgraph
       - kythe-importer
       - microlens
-#      - proto-lens
-#      - text
       - optparse-applicative
       - vector
       - vty

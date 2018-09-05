@@ -3,7 +3,10 @@
 {-# LANGUAGE RecordWildCards #-}
 module CallGraph
   ( CallGraph(..)
-  , constructCallGraph
+  , KCallGraph
+  , fromStream
+  , fromEdges
+  , pathsBetween
   , children
   , nodeLabel
   ) where
@@ -17,6 +20,7 @@ import Data.Graph (graphFromEdges, Graph, Vertex)
 import qualified Data.Map as M
 import Data.Maybe (mapMaybe)
 import Data.Monoid
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -28,18 +32,20 @@ type Node = [K.Entry]
 -- using path + signature for now
 type Key = (Text, Text)
 
-data CallGraph = CallGraph
+type KCallGraph = CallGraph Node Key
+
+data CallGraph n k = CallGraph
   { cgGraph :: Graph
-  , cgNodeFromVertex :: Vertex -> (Node, Key, [Key])
-  , cgVertexFromKey :: Key -> Maybe Vertex
+  , cgNodeFromVertex :: Vertex -> (n, k, [k])
+  , cgVertexFromKey :: k -> Maybe Vertex
   }
 
-children :: Vertex -> CallGraph -> [Vertex]
+children :: Vertex -> CallGraph n k -> [Vertex]
 children i CallGraph{..} = mapMaybe cgVertexFromKey children
   where
     (_, _, children) = cgNodeFromVertex i
 
-nodeLabel :: Vertex -> CallGraph -> Text
+nodeLabel :: Vertex -> KCallGraph -> Text
 nodeLabel v CallGraph {..} = labeledFacts facts
   where
     (facts, _, _) = cgNodeFromVertex v
@@ -51,12 +57,13 @@ nodeLabel v CallGraph {..} = labeledFacts facts
       _ ->
         Nothing
 
-constructCallGraph :: MonadIO m => ConduitT K.Entry Void m CallGraph
-constructCallGraph = construct <$> collectEdges
+fromStream :: MonadIO m => ConduitT K.Entry Void m KCallGraph
+fromStream = fromEdges <$> collectEdges
+
+fromEdges :: Ord k => [(n, k, [k])] -> CallGraph n k
+fromEdges edges = CallGraph {..}
   where
-    construct edges =
-      let (cgGraph, cgNodeFromVertex, cgVertexFromKey) = graphFromEdges edges
-      in CallGraph {..}
+    (cgGraph, cgNodeFromVertex, cgVertexFromKey) = graphFromEdges edges
 
 collectEdges :: MonadIO m => ConduitT K.Entry Void m [([K.Entry], Key, [Key])]
 collectEdges =
@@ -84,3 +91,15 @@ collectEdges =
 
 vname2key :: K.VName -> Key
 vname2key vn = (vn ^. K.path, vn ^. K.signature)
+
+pathsBetween :: CallGraph n k -> Vertex -> Vertex -> [[Vertex]]
+pathsBetween g x y = go x y (Set.singleton x)
+  where
+    go source target visited
+      | source == target = [[source]]
+      | otherwise =
+        [ source : path
+        | child <- children source g
+        , Set.notMember child visited
+        , path <- go child target (Set.insert child visited)
+        ]
