@@ -11,9 +11,9 @@ import Data.Bits
 import Data.ByteString (ByteString)
 import Data.Conduit.Attoparsec (conduitParser)
 import Data.Conduit.Combinators (sourceFile)
+import Data.List (isSuffixOf)
 import Data.ProtoLens.Encoding (decodeMessage)
 import qualified Proto.Kythe.Proto.Storage as K
-import System.FilePath.Glob (compile, match)
 
 protoFile ::
      (MonadResource m, MonadThrow m) => FilePath -> ConduitT i K.Entry m ()
@@ -43,10 +43,9 @@ entriesDir f = sourceDirectory f .| pathEntries -- sequence_ (mapM protoFile)
   where
     pathEntries :: (MonadResource m, MonadThrow m) => ConduitT FilePath K.Entry m ()
     pathEntries = do
-      let entries = compile "**/*.entries"
       mp <- await
       case mp of
         Nothing -> return ()
         Just fp -> do
-          when (match entries fp) $ protoFile fp
+          when (".entries" `isSuffixOf` fp) $ protoFile fp
           pathEntries

@@ -7,7 +7,6 @@ dependencies:
   - bytestring
   - conduit
   - conduit-extra
-  - Glob
   - kythe-proto
   - proto-lens
 
