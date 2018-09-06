@@ -22,8 +22,9 @@ data Options = Options
   , optsCommand :: Command
   }
 
-data Command =
-  Paths Text Text
+data Command
+  = Paths Text Text
+  | Stats
 
 opts = info (options <**> helper)
        ( fullDesc
@@ -39,6 +40,8 @@ opts = info (options <**> helper)
       <*> cmd
     cmd = subparser $
       command "paths" (info paths (progDesc "Paths between functions"))
+      <>
+      command "stats" (info (pure Stats) (progDesc "Call graph stats"))
     paths = Paths
       <$> textOption
           (  long "source"
@@ -63,6 +66,10 @@ main = do
       s <- findVertex "source node" sK g
       t <- findVertex "target node" tK g
       findPaths g s t
+    Stats -> do
+      let graph = cgGraph g
+      putStrLn $ "Number of vertices:" ++ show (length $ vertices graph) ++ "\n" ++
+        "Number of edges:" ++ show (length $ edges graph)
 
 readCallGraph :: FilePath -> IO KCallGraph
 readCallGraph d = runConduitRes $ entriesDir d .| fromStream
