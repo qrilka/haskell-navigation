@@ -18,7 +18,7 @@ import Data.ByteString (ByteString)
 import qualified Data.Conduit.Combinators as C
 import Data.Graph (graphFromEdges, Graph, Vertex)
 import qualified Data.Map as M
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -27,6 +27,7 @@ import qualified Data.Text.Encoding as T
 import Lens.Family2 ((^.), to)
 import qualified Proto.Kythe.Proto.Storage as K
 import qualified Proto.Kythe.Proto.Storage_Fields as K
+import Text.Regex
 
 type Node = [K.Entry]
 -- using path + signature for now
@@ -53,9 +54,15 @@ nodeLabel v CallGraph {..} = labeledFacts facts
     labelFact :: K.Entry -> Maybe Text
     labelFact n = case n ^. K.factName of
       "/kythe/node/kind" ->
-        Just $ T.decodeUtf8 (n ^. K.factValue) <> ":" <> n ^. K.source . K.signature
+        case n ^. K.factValue of
+          "file" -> Just $ "file:" <> n ^. K.source . K.path
+          _ -> Just $ T.decodeUtf8 (n ^. K.factValue) <> ":" <>
+               simplify (n ^. K.source . K.signature)
       _ ->
         Nothing
+    simplify t = removePackageHash . fromMaybe t $ T.stripPrefix "haskell:" t
+    removePackageHash = T.pack . (\s -> subRegex hyphenHashColon s ":") . T.unpack
+    hyphenHashColon = mkRegex "-\\w{22}:"
 
 fromStream :: MonadIO m => ConduitT K.Entry Void m KCallGraph
 fromStream = fromEdges <$> collectEdges
