@@ -6,10 +6,15 @@ dependencies:
   - bytestring
   - conduit
   - containers
+  - extra
   - kythe-proto
+  - kythe-schema
   - lens-family
+  - mtl
   - regex-compat
   - text
+  - rio
+  - vector
 
 library:
   source-dirs: src
