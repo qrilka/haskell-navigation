@@ -20,6 +20,8 @@ library:
   source-dirs: src
   exposed-modules:
     - CallGraph
+    - Data.Graph.Sparse
+    - Language.Haskell.Source
 
 tests:
   spec:

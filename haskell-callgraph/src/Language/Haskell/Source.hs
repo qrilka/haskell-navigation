@@ -5,6 +5,10 @@
 module Language.Haskell.Source
   ( PackageName
   , ModuleName
+  , FunctionDefinition(..)
+  , FunctionCall(..)
+  , SourceLocation(..)
+  , FunctionCallGraph
   , SourceInfo(..)
   , fromKCallGraph
   , printSourceInfo
