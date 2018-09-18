@@ -35,8 +35,8 @@ data Command
 opts :: ParserInfo Options
 opts = info (options <**> helper)
        ( fullDesc
-       <> progDesc "Navigation source code graph from Kythe entries"
-       <> header "entries-to-json - json export of kythe entries" )
+       <> progDesc "Source code graph query tool using Kythe entries"
+       <> header "query-tool - querying call graph from kythe entries" )
   where
     options = Options
       <$> strOption
