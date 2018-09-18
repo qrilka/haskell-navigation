@@ -39,7 +39,7 @@ protoFile f = sourceFile f .| toEntries
 
 entriesDir ::
      (MonadResource m, MonadThrow m) => FilePath -> ConduitT () K.Entry m ()
-entriesDir f = sourceDirectory f .| pathEntries -- sequence_ (mapM protoFile)
+entriesDir f = sourceDirectory f .| pathEntries
   where
     pathEntries :: (MonadResource m, MonadThrow m) => ConduitT FilePath K.Entry m ()
     pathEntries = do

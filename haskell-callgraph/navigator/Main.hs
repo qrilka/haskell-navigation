@@ -14,7 +14,7 @@ import CallGraph.Kythe
 import Conduit
 import Control.Monad
 import Data.Graph
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -23,6 +23,7 @@ import Lens.Micro ((^.), (&), (?~))
 import qualified Graphics.Vty as Vty
 import Options
 import Options.Applicative (execParser)
+import qualified Proto.Kythe.Proto.Storage as K
 import System.Exit (die)
 
 main :: IO ()
@@ -31,7 +32,7 @@ main = do
   g <- readCallGraph optsDir
   when (null . vertices $ cgGraph g) $
     die "No call graph information was found"
-  root <- case cgVertexFromKey g ("", optsRoot) of
+  root <- case cgVertexFromKey g (K.VName optsRoot "" "" "" "" []) of
     Just v -> pure v
     Nothing -> die "Root node not found in the graph"
   let l = listChildren g root 0

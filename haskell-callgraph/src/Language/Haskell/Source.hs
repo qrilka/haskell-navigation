@@ -5,39 +5,42 @@
 module Language.Haskell.Source
   ( PackageName
   , ModuleName
+  , ModuleInfo(..)
   , FunctionDefinition(..)
   , FunctionCall(..)
   , SourceLocation(..)
   , FunctionCallGraph
-  , SourceInfo(..)
+  , BaseSourceInfo(..)
+  , RawSourceInfo
+  , fromRaw
+  , FunctionRef(..)
+  , SourceInfo
   , fromKCallGraph
-  , printSourceInfo
   ) where
 
-import CallGraph hiding (Node)
+import CallGraph
 import Control.Monad.State.Strict
 import Data.Graph
 import Data.Graph.Sparse as SG
-import qualified Data.IntMap as IntMap
 import Data.List.Extra (groupSort)
-import qualified Data.Vector.Generic.Mutable as MV
 import Language.Kythe.Schema.Typed
 import qualified Proto.Kythe.Proto.Storage as K
 import qualified Proto.Kythe.Proto.Storage_Fields as K
 import RIO
-import RIO.List (find, intercalate, nub)
+import RIO.List (find, isSuffixOf, nub, partition)
 import qualified RIO.Map as M
-import qualified RIO.Set as S
+import qualified RIO.Set as Set
 import qualified RIO.Text as T
 import qualified RIO.Vector as V
 
 type PackageName = Text
 type ModuleName = Text
+type FunctionName = Text
 
 data FunctionDefinition = FunctionDefinition
   { package :: !PackageName
   , module_ :: !ModuleName
-  , functionName :: !Text
+  , functionName :: !FunctionName
   } deriving (Eq, Ord, Show)
 
 data FunctionCall = FunctionCall !SourceLocation -- Byte offset or line/column
@@ -45,110 +48,144 @@ data FunctionCall = FunctionCall !SourceLocation -- Byte offset or line/column
 
 data SourceLocation = SourceLocation Int deriving (Eq, Show)
 
-type FunctionCallGraph = SparseGraph FunctionDefinition [FunctionCall]
+type BaseFunctionCallGraph name = SparseGraph name [FunctionCall]
 
-data SourceInfo = SourceInfo
-  { calls :: FunctionCallGraph
-  , packages :: Map PackageName (Set ModuleName)
-  , files :: Map ModuleName (FilePath, ByteString)
-  , modules :: Map ModuleName (Set FunctionDefinition)
+type FunctionCallGraph = BaseFunctionCallGraph FunctionRef
+
+data ModuleInfo name = ModuleInfo
+  { modPath :: FilePath
+  , modText :: ByteString
+  , modFunctions :: Set name
   } deriving (Eq, Show)
 
+data BaseSourceInfo name = BaseSourceInfo
+  { calls :: BaseFunctionCallGraph name
+  , packages :: Map PackageName (Map ModuleName (ModuleInfo name))
+  } deriving (Eq, Show)
+
+instance (Ord name) => Semigroup (BaseSourceInfo name) where
+  (<>) si1 si2 =
+    BaseSourceInfo
+    { calls = calls si1 `union` calls si2
+    , packages = packages si1 <> packages si2
+    }
+
+instance (Ord name) => Monoid (BaseSourceInfo name) where
+  mempty = BaseSourceInfo mempty mempty
+  mappend = (<>)
+
+type RawSourceInfo = BaseSourceInfo K.VName
+type SourceInfo = BaseSourceInfo FunctionRef
+
+data FunctionRef
+  = ResolvedRef FunctionDefinition
+  | UnresolvedRef K.VName
+  deriving (Eq, Ord, Show)
+
+fromRaw :: RawSourceInfo -> SourceInfo
+fromRaw raw = BaseSourceInfo calls' packages'
+  where
+    (packages', vname2def) = flip runState M.empty $
+      flip M.traverseWithKey (packages raw) $
+      \pn modules -> flip M.traverseWithKey modules (mapVName pn)
+    mapVName :: PackageName -> ModuleName -> ModuleInfo K.VName -> State (Map K.VName FunctionDefinition) (ModuleInfo FunctionRef)
+    mapVName pn mn ModuleInfo{modFunctions=fs,..} = do
+      fs' <- fmap Set.fromList . forM (Set.toList fs) $ \vName -> do
+        let fn = extractFunctionName vName
+            definition = FunctionDefinition pn mn fn
+        modify $ M.insert vName definition
+        return $ ResolvedRef definition
+      pure ModuleInfo{modFunctions=fs',..}
+    extractFunctionName :: K.VName -> Text
+    extractFunctionName vname = last . T.split (== ':') $ vname ^. K.signature
+    calls' = SG.mapNodes resolveRef (calls raw)
+    resolveRef vn = case M.lookup vn vname2def of
+                      Just d -> ResolvedRef d
+                      Nothing -> UnresolvedRef vn
+
 type Roots
-   = ( Map PackageName (Set ModuleName)
-     , Map ModuleName (Set FunctionDefinition)
-     , Map ModuleName (FilePath, ByteString)
-     , Map K.VName  (FunctionDefinition, [(K.VName, [FunctionCall])]))
+   = ( Map PackageName (Map ModuleName (ModuleInfo K.VName))
+     , Map K.VName  [(K.VName, [FunctionCall])])
 
-
-fromKCallGraph :: KCallGraph -> SourceInfo
+fromKCallGraph :: KCallGraph -> BaseSourceInfo K.VName
 fromKCallGraph CallGraph{..} = collect $ execState go noInfo
   where
-    collect (ps, ms, fs, fcs) = -- traceShow (fcs) $
+    collect (ps, fcs) = -- traceShow (fcs) $
       let fvnames = M.fromList $ zip (M.keys fcs) [0..] 
           fixCalls cs = flip mapMaybe cs $ \(vn, fCalls) -> do
             fIndex <- M.lookup vn fvnames
-            return (fIndex, fCalls)            
-      in SourceInfo {
-      calls = SG.fromList $ map (second fixCalls) $ M.elems fcs
-      , packages = ps
-      , modules = ms
-      , files = fs
-      }
-    noInfo = (M.empty, M.empty, M.empty, M.empty)
-    knodes :: Vector KNode
+            return (fIndex, fCalls)
+      in BaseSourceInfo {
+        calls = SG.fromList $ map (second fixCalls) $ M.toList fcs
+        , packages = ps
+        }
+    noInfo = (M.empty, M.empty)
+    knodes :: Vector (Maybe KNode)
     knodes = V.fromList $ flip map (vertices cgGraph) $ \v ->
-      let (node, _, _) = cgNodeFromVertex v
-      in case parseFacts node of
-           Just knode -> knode
-           Nothing -> error $ "Bad node " ++ show node
-    fVnames = flip V.mapMaybe knodes $ \KNode{..} ->
-      case kind of
-        VariableNK -> Just vname
-        _ -> Nothing
-    fVnameIndices = M.fromList [ (fname, i) | (i, fname) <- V.toList $ V.indexed fVnames]
-    colon = ':'
-    extractFunctionName :: K.VName -> Text
-    extractFunctionName vname = last . T.split (== colon) $ vname ^. K.signature
+      let (node, k, _) = cgNodeFromVertex v
+      in parseFacts k node
     go :: State Roots ()
     go =
-      forM_ (V.toList $ V.indexed knodes) $ \(v, knode) -> do
-      if kind knode == PackageNK
-        then parsePackage v knode
+      forM_ (V.toList $ V.indexed knodes) $ \(v, mKnode) -> forM_ mKnode $ \knode ->do
+      if kind knode == PackageNK -- Kythe package == Haskell module
+        then parseModule v knode
         else return () -- starting from packages
 
-    parsePackage :: Vertex -> KNode -> State Roots ()
-    parsePackage v pKnode = do
-      let (pNode, _, pBranches) = cgNodeFromVertex v
-      (ps, ms, fs, fcs) <- {-traceShow ("### visited top", v, facts pKnode) $ -}
-        get
-      let (pname, mname) = parsePackageVName (vname pKnode)
-          pms' = case M.lookup pname ps of
-                   Nothing -> S.singleton mname
-                   Just pms -> S.insert mname pms
-      put ( M.insert pname pms' ps
-          , M.insert mname S.empty ms
-          , fs
-          , fcs)
-      forM_ (mapMaybe cgVertexFromKey pBranches) $ \v' ->
-        let Just fKnode = knodes V.!? v'
-            (_, _, fBranches) = cgNodeFromVertex v'
-        in case -- traceShow (">>> visited in pkg", v', facts fKnode) $
-                kind fKnode of
-          FileNK -> do
-            addFileInfo mname (vname fKnode) (facts fKnode)
-            return Nothing
-          VariableNK -> do
-            Just <$> parseDefinition (pname, mname) fKnode v'
-          _ -> error $ "Unexpected node in package: " ++ show (pname, mname) ++":" ++ show (facts fKnode)
-    addFileInfo :: ModuleName -> K.VName -> [K.Entry] -> State Roots ()
-    addFileInfo mname vname node = modify' $ \(ps, ms, fs, fcs) ->
-      let fname = T.unpack $ vname ^. K.path
-          text = case findFact textFactName node of
-            Just fact -> fact ^. K.factValue
+    parseModule :: Vertex -> KNode -> State Roots ()
+    parseModule v pKnode = do
+      let (_, _, pBranches) = cgNodeFromVertex v
+          (pname, mname) = parsePackageVName (vname pKnode)
+          subKnodes = flip mapMaybe pBranches $ \k -> do
+            v' <- cgVertexFromKey k
+            knode <- join $ knodes V.!? v'
+            pure (v', knode)
+      case -- traceShow (vname pKnode, length pBranches) $
+        partition (\(_, k) -> kind k == FileNK) subKnodes of
+        (fKnodes, other) | Just (p, txt) <- getFileInfo
+                                            (map snd fKnodes)  -> do
+          functions <- forM other $ \(v', vKnode) ->
+            parseDefinition vKnode v'
+          let modInfo = ModuleInfo
+                { modPath = p
+                , modText = txt
+                , modFunctions = Set.fromList functions
+                }
+              pmsDelta = M.singleton pname $
+                M.singleton mname modInfo
+          modify $ first (M.unionWith (<>) pmsDelta)
+        (found, _other) ->
+          error $ "Expected to have 1 file node for module " ++ show (pname, mname) ++
+            " vname " ++ show (vname pKnode) ++ " node " ++ show (facts pKnode) ++ " but found " ++ show (length found) ++
+            "\n all children: " ++ show (map (vname . snd) subKnodes)
+
+    getFileInfo ::[KNode] -> Maybe (FilePath, ByteString)
+    getFileInfo [kn] = Just $ getFileInfo' kn
+    getFileInfo xs =
+      let fileInfos = map getFileInfo' xs
+      in case partition ((".hs-boot" `isSuffixOf`) . fst) fileInfos of
+        (_, [x]) -> Just x
+        _ -> Nothing
+    getFileInfo' knode =
+      let fpath = T.unpack $ knode ^. to vname . K.path
+          text = case findFact textFactName (facts knode) of
+            Just f -> f ^. K.factValue
             Nothing -> ""
-      in (ps, ms, M.insert mname (fname, text) fs, fcs)
-    parseDefinition :: (PackageName, ModuleName) -> KNode -> Vertex -> State Roots ()
-    parseDefinition (pname, mname) dKnode v = do
-      let fname = extractFunctionName $ vname dKnode
-          definition = FunctionDefinition pname mname fname
-          fIndex = case M.lookup (vname dKnode) fVnameIndices of
-            Just i -> i
-            Nothing -> error $ "Unknown definition VName " ++
-                       show (vname dKnode)
-          (_, _, branches) = cgNodeFromVertex v
-          fCalls = groupSort . flip mapMaybe branches $ \branch -> do
+      in (fpath, text)
+    parseDefinition :: KNode -> Vertex -> State Roots K.VName
+    parseDefinition dKnode v = do
+      let (_, _, branches) = cgNodeFromVertex v
+          !fCalls = groupSort . flip mapMaybe branches $ \branch -> do
             av <- cgVertexFromKey branch
-            aKnode <- knodes V.!? av
+            aKnode <- join $ knodes V.!? av
             if kind aKnode == AnchorNK
               then extractCall aKnode av
-              else fail "bad node kind"
-      modify' $ \(ps, ms, fs, fcs) ->
-        ( ps
-        , M.insertWith S.union mname (S.singleton definition) ms
-        , fs
-        , M.insert (vname dKnode) (definition, fCalls) fcs
-        )
+              else error "bad node kind"
+      forM_ fCalls $ \(vn, _) -> do
+        let maybeInsertEmpty (Just x) = Just x
+            maybeInsertEmpty Nothing = Just []
+        modify' $ second (M.alter maybeInsertEmpty vn)
+      modify' $ second (M.insert (vname dKnode) fCalls)
+      return $ vname dKnode
 
     extractCall :: KNode -> Vertex -> Maybe (K.VName, FunctionCall)
     extractCall aKnode v = do
@@ -158,20 +195,14 @@ fromKCallGraph CallGraph{..} = collect $ execState go noInfo
       -- for some reason haskell-indexer seem to create duplicated entries sometimes
       case nub branches of
         [refKey] -> do
-          v <- cgVertexFromKey refKey
-          rKnode <- knodes V.!? v
+          v' <- cgVertexFromKey refKey
+          rKnode <- join $ knodes V.!? v'
           return (vname rKnode, FunctionCall (SourceLocation start))
         x -> error $ "Anchor with bad branches " ++ show (x, facts aKnode)
-      
-    parseInFile :: (PackageName, ModuleName) -> Vertex -> State Roots ()
-    parseInFile (pname, mname) v =
-      let Just knode = knodes V.!? v
-          (_, _, branches) = cgNodeFromVertex v
-      in case kind of
-        x -> error $ "Encountered " ++ show (facts knode)
 
-parseFacts :: [K.Entry] -> Maybe KNode
-parseFacts facts = do
+parseFacts :: K.VName -> [K.Entry] -> Maybe KNode
+parseFacts vn [] = pure $ KNode VariableNK vn [] -- assuming orphan nodes to be function refs
+parseFacts _ facts = do
   kindFact <- find (\f -> f ^. K.factName == kindFactName) facts
   kind <- parseNodeKind (decodeUtf8With lenientDecode $ kindFact ^. K.factValue)
   let vname = kindFact ^. K.source
@@ -185,17 +216,15 @@ data KNode = KNode
   , facts :: [K.Entry]
   }
 
+kindFactName :: Text
 kindFactName = "/kythe/node/kind"
+textFactName :: Text
 textFactName = "/kythe/text"
+locStartFactName :: Text
 locStartFactName ="/kythe/loc/start"
 
 findFact :: Text -> [K.Entry] -> Maybe K.Entry
 findFact name = find (\f -> f ^. K.factName == name)
-
-nodeKind :: [K.Entry] -> Maybe NodeKind
-nodeKind facts = do
-  kindFact <- findFact kindFactName facts
-  parseNodeKind (decodeUtf8With lenientDecode $ kindFact ^. K.factValue)
 
 parseNodeKind :: Text -> Maybe NodeKind
 parseNodeKind "anchor" = Just AnchorNK  
@@ -206,32 +235,13 @@ parseNodeKind _ = Nothing
 
 parsePackageVName :: K.VName -> (PackageName, ModuleName)
 parsePackageVName vname =
-  let components = T.split (== '-') (vname ^. K.signature)
-  in case reverse components of
-       [noDashes] -> T.break (==':') noDashes
+  let parts = T.split (== '-') (vname ^. K.signature)
+  in case reverse parts of
+       [noDashes] -> T.break (== ':') noDashes
        (hashMod:_version:packageRev) ->
          ( T.intercalate "-" $ reverse packageRev
          , T.drop 23 hashMod -- 22 chars hash + ':'
           )
-       x ->
+       _ ->
          error $
-         "Could not extract package name and module name from " ++
-         show components
-
--- | basic printer
-printSourceInfo :: SourceInfo -> IO ()
-printSourceInfo SourceInfo{..} =
-  forM_ (M.toList packages) $ \(pname, moduleNames) -> do
-    putStrLn $ "Package: " ++ show pname
-    forM_ (S.toList moduleNames) $ \mname -> do
-      putStrLn $ "-- Module: " ++ show mname
-      forM_ (M.lookup mname modules) $ \definitions ->
-        forM_ (S.toList definitions) $ \definition -> do
-          putStrLn $ "-- -- Function: " ++ show (functionName definition)
-          forM_ (lookupNode definition calls) $ \(_, outcalls) -> do
-            forM_ (IntMap.toList outcalls) $ \(i, fCalls) -> do
-              let target = maybe "<unknown>" (functionName . fst) $
-                           assocTable calls V.!? i
-              putStrLn $ "-- -- -- Calls " ++ show target ++ " (" ++
-                intercalate "," (map show fCalls) ++ ")"
-
+         "Could not extract package name and module name from " ++ show parts

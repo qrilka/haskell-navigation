@@ -7,6 +7,7 @@ dependencies:
   - conduit
   - containers
   - extra
+  - kythe-importer
   - kythe-proto
   - kythe-schema
   - lens-family
@@ -18,10 +19,12 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options: [-Wall]
   exposed-modules:
     - CallGraph
     - Data.Graph.Sparse
     - Language.Haskell.Source
+    - Language.Haskell.Source.IO
 
 tests:
   spec:

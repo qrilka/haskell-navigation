@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 module CallGraph
@@ -12,9 +13,6 @@ module CallGraph
   ) where
 
 import Conduit
-import qualified Data.Attoparsec.ByteString as AB
-import Data.Bits
-import Data.ByteString (ByteString)
 import qualified Data.Conduit.Combinators as C
 import Data.Graph (graphFromEdges, Graph, Vertex)
 import qualified Data.Map as M
@@ -24,14 +22,13 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Lens.Family2 ((^.), to)
+import Lens.Family2 ((^.))
 import qualified Proto.Kythe.Proto.Storage as K
 import qualified Proto.Kythe.Proto.Storage_Fields as K
 import Text.Regex
 
 type Node = [K.Entry]
--- using path + signature for now
-type Key = (Text, Text)
+type Key = K.VName
 
 type KCallGraph = CallGraph Node Key
 
@@ -42,9 +39,9 @@ data CallGraph n k = CallGraph
   }
 
 children :: Vertex -> CallGraph n k -> [Vertex]
-children i CallGraph{..} = mapMaybe cgVertexFromKey children
+children i CallGraph{..} = mapMaybe cgVertexFromKey branches
   where
-    (_, _, children) = cgNodeFromVertex i
+    (_, _, branches) = cgNodeFromVertex i
 
 nodeLabel :: Vertex -> KCallGraph -> Text
 nodeLabel v CallGraph {..} = labeledFacts facts
@@ -74,7 +71,7 @@ fromEdges edges = CallGraph {..}
 
 collectEdges :: MonadIO m => ConduitT K.Entry Void m [([K.Entry], Key, [Key])]
 collectEdges =
-  map (\(nm, (facts, children)) -> (facts, nm, children)) . M.toList <$>
+  map (\(nm, (facts, branches)) -> (facts, nm, branches)) . M.toList <$>
   C.foldl collectEntry M.empty
   where
     collectEntry ::
@@ -82,22 +79,26 @@ collectEdges =
       -> K.Entry
       -> (M.Map Key ([K.Entry], [Key]))
     collectEntry collected e =
-      let source = e ^. K.source . to vname2key
-          target = e ^. K.target . to vname2key
+      let source = e ^. K.source
+          target = e ^. K.target
       in if e ^. K.factName == "/"
            then let (s', t') =
                       case e ^. K.edgeKind of
                         "/kythe/edge/childof" -> (target, source)
                         _ -> (source, target)
                 in case M.lookup s' collected of
-                     Nothing -> M.insert s' ([], [t']) collected
-                     Just (x, ys) -> M.insert s' (x, t' : ys) collected
+                     Nothing ->
+                       insertMissing t' ([],[]) $
+                       M.insert s' ([], [t']) collected
+                     Just (x, ys) ->
+                       insertMissing t' ([],[]) $
+                       M.insert s' (x, t' : ys) collected
            else case M.lookup source collected of
                   Nothing -> M.insert source ([e], []) collected
                   Just (facts, xs) -> M.insert source (e : facts, xs) collected
-
-vname2key :: K.VName -> Key
-vname2key vn = (vn ^. K.path, vn ^. K.signature)
+    insertMissing k v = flip M.alter k $ \case
+      Just x -> Just x
+      Nothing -> Just v
 
 pathsBetween :: CallGraph n k -> Vertex -> Vertex -> [[Vertex]]
 pathsBetween g x y = go x y (Set.singleton x)
