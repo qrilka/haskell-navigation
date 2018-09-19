@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -20,6 +21,7 @@ module Language.Haskell.Source
 
 import CallGraph
 import Control.Monad.State.Strict
+import Data.Store
 import Data.Graph
 import Data.Graph.Sparse as SG
 import Data.List.Extra (groupSort)
@@ -41,12 +43,18 @@ data FunctionDefinition = FunctionDefinition
   { package :: !PackageName
   , module_ :: !ModuleName
   , functionName :: !FunctionName
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Show, Generic)
+
+instance Store FunctionDefinition
+
+data SourceLocation = SourceLocation Int deriving (Eq, Show, Generic)
+
+instance Store SourceLocation
 
 data FunctionCall = FunctionCall !SourceLocation -- Byte offset or line/column
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
-data SourceLocation = SourceLocation Int deriving (Eq, Show)
+instance Store FunctionCall
 
 type BaseFunctionCallGraph name = SparseGraph name [FunctionCall]
 
@@ -56,12 +64,14 @@ data ModuleInfo name = ModuleInfo
   { modPath :: FilePath
   , modText :: ByteString
   , modFunctions :: Set name
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
+
+instance (Ord name, Store name) => Store (ModuleInfo name)
 
 data BaseSourceInfo name = BaseSourceInfo
   { calls :: BaseFunctionCallGraph name
   , packages :: Map PackageName (Map ModuleName (ModuleInfo name))
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 instance (Ord name) => Semigroup (BaseSourceInfo name) where
   (<>) si1 si2 =
@@ -79,8 +89,12 @@ type SourceInfo = BaseSourceInfo FunctionRef
 
 data FunctionRef
   = ResolvedRef FunctionDefinition
-  | UnresolvedRef K.VName
-  deriving (Eq, Ord, Show)
+  | UnresolvedRef Text
+  deriving (Eq, Ord, Show, Generic)
+
+instance Store FunctionRef
+
+instance (Ord name, Store name) => Store (BaseSourceInfo name)
 
 fromRaw :: RawSourceInfo -> SourceInfo
 fromRaw raw = BaseSourceInfo calls' packages'
@@ -101,7 +115,7 @@ fromRaw raw = BaseSourceInfo calls' packages'
     calls' = SG.mapNodes resolveRef (calls raw)
     resolveRef vn = case M.lookup vn vname2def of
                       Just d -> ResolvedRef d
-                      Nothing -> UnresolvedRef vn
+                      Nothing -> UnresolvedRef (vn ^. K.signature)
 
 type Roots
    = ( Map PackageName (Map ModuleName (ModuleInfo K.VName))

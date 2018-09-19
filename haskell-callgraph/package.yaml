@@ -15,6 +15,7 @@ dependencies:
   - regex-compat
   - text
   - rio
+  - store
   - vector
 
 library:
@@ -36,12 +37,18 @@ tests:
     build-tools: hspec-discover
 
 executables:
+  kythe-to-call-graph:
+    source-dirs: kythe-to-call-graph
+    main: Main
+    dependencies:
+      - haskell-callgraph
+      - kythe-importer
+      - optparse-applicative
   query-tool:
     source-dirs: query-tool
     main: Main.hs
     dependencies:
       - haskell-callgraph
-      - kythe-importer
       - optparse-applicative
   navigator:
     source-dirs: navigator

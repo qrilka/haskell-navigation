@@ -1,5 +1,6 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 module Data.Graph.Sparse
   ( SparseGraph(..)
   , fromList
@@ -9,8 +10,9 @@ module Data.Graph.Sparse
   , pathsBetween
   ) where
 
-import RIO as RIO
+import Data.Store
 import qualified Data.IntMap as IntMap
+import RIO as RIO
 import qualified RIO.Map as M
 import qualified RIO.Set as Set
 import qualified RIO.Vector as V
@@ -18,7 +20,7 @@ import qualified RIO.Vector as V
 data SparseGraph node edge = SparseGraph
   { assocTable :: Vector (node, IntMap edge)
   , nodeIndices :: Map node Int
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 instance (Ord node, Semigroup edge) => Semigroup (SparseGraph node edge) where
   (<>) = union
@@ -26,6 +28,9 @@ instance (Ord node, Semigroup edge) => Semigroup (SparseGraph node edge) where
 instance (Ord node, Semigroup edge) => Monoid (SparseGraph node edge) where
   mempty = SparseGraph mempty mempty
   mappend = (<>)
+
+instance (Ord node, Store node, Store edge) =>
+         Store (SparseGraph node edge)
 
 fromList :: Ord node => [(node, [(Int, edge)])] -> SparseGraph node edge
 fromList nodes = SparseGraph{..}

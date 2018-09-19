@@ -9,21 +9,20 @@ import Control.Monad
 import qualified Data.IntMap as IntMap
 import Data.Graph
 import Data.Graph.Sparse
+import Data.Store (decode)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Language.Haskell.Source
-import Language.Haskell.Source.IO
-import qualified Lens.Family2 as F2
-import qualified Proto.Kythe.Proto.Storage_Fields as K
 import RIO
 import System.Exit (die)
 import Options.Applicative
 import Options.Applicative.Types (readerAsk)
+import qualified RIO.ByteString as B
 import qualified RIO.Map as M
 import qualified RIO.Vector as V
 
 data Options = Options
-  { optsDir :: FilePath
+  { optsGraphPath :: FilePath
   , optsCommand :: Command
   }
 
@@ -40,10 +39,10 @@ opts = info (options <**> helper)
   where
     options = Options
       <$> strOption
-          (  long "directory"
-          <> short 'd'
-          <> metavar "DIRECTORY"
-          <> help "Directory with input Kythe entries files")
+          (  long "graph"
+          <> short 'g'
+          <> metavar "GRAPH"
+          <> help "File with call graph information")
       <*> cmd
     cmd = subparser $
       command "paths" (info paths (progDesc "Paths between functions"))
@@ -73,7 +72,10 @@ opts = info (options <**> helper)
 main :: IO ()
 main = do
   Options{..} <- execParser opts
-  si <- loadFromDir optsDir
+  decoded <- decode <$> B.readFile optsGraphPath
+  si <- case decoded of
+    Left err -> die $ "Could not decode call graph, error: " ++ show err
+    Right x -> pure x
   when (V.null . assocTable $ calls si) $
     die "No call graph information was found"
   case optsCommand of
@@ -128,8 +130,8 @@ findPaths g x y =
 showRef :: FunctionRef -> Text
 showRef (ResolvedRef fun) =
   functionName fun <> "(module " <> module_ fun <> ")"
-showRef (UnresolvedRef vname) =
-  "Unresolved " <> (vname F2.^. K.signature)
+showRef (UnresolvedRef urname) =
+  "Unresolved " <> urname
 
 listModule :: SourceInfo -> PackageName -> ModuleName -> IO ()
 listModule BaseSourceInfo{packages=ps, calls=cs} pname mname = do
