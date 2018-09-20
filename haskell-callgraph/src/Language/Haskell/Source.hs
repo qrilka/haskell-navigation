@@ -251,7 +251,7 @@ parsePackageVName :: K.VName -> (PackageName, ModuleName)
 parsePackageVName vname =
   let parts = T.split (== '-') (vname ^. K.signature)
   in case reverse parts of
-       [noDashes] -> T.break (== ':') noDashes
+       [noDashes] -> second (T.drop 1) $ T.break (== ':') noDashes
        (hashMod:_version:packageRev) ->
          ( T.intercalate "-" $ reverse packageRev
          , T.drop 23 hashMod -- 22 chars hash + ':'
