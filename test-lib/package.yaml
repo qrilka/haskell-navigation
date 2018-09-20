@@ -9,3 +9,12 @@ library:
   exposed-modules:
     - A
     - B
+
+executables:
+  exe1:
+    source-dirs: exe1
+    main: Main.hs
+  exe2:
+    source-dirs: exe2
+    dependencies: [test-lib]
+    main: Main.hs
