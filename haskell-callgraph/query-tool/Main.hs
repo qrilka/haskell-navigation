@@ -29,7 +29,8 @@ data Options = Options
 data Command
   = Paths Text Text
   | Stats
-  | List Text
+  | ListPackages
+  | ListModule Text
 
 opts :: ParserInfo Options
 opts = info (options <**> helper)
@@ -47,7 +48,11 @@ opts = info (options <**> helper)
     cmd = subparser $
       command "paths" (info paths (progDesc "Paths between functions"))
       <>
-      command "list" (info list (progDesc "List module contents (function definitions and calls)"))
+      command "list-module"
+      (info listModuleCmd (progDesc "List module contents (function definitions and calls)"))
+      <>
+      command "list-packages"
+      (info (pure ListPackages) (progDesc "List packages and their modules"))
       <>
       command "stats" (info (pure Stats) (progDesc "Call graph stats"))
     paths = Paths
@@ -61,7 +66,7 @@ opts = info (options <**> helper)
           <> short 't'
           <> metavar "TGT"
           <> help "Target graph node")
-    list = List
+    listModuleCmd = ListModule
       <$> textOption
           (  long "module"
           <> short 'm'
@@ -87,7 +92,9 @@ main = do
       let graph = calls si
       putStrLn $ "Number of vertices:" ++ show (length $ assocTable graph) ++ "\n" ++
         "Number of edges:" ++ show (V.sum $ V.map (IntMap.size . snd) $ assocTable graph)
-    List t -> do
+    ListPackages -> do
+      listPackages si
+    ListModule t -> do
       case T.split (==':') t of
         [pkg, mod]| not (T.null pkg) && not (T.null mod) ->
            listModule si pkg mod
@@ -155,3 +162,10 @@ listModule BaseSourceInfo{packages=ps, calls=cs} pname mname = do
             Nothing -> return ()
         UnresolvedRef vname ->
           putStrLn $ "Unresolved " ++ show vname
+
+listPackages :: SourceInfo -> IO ()
+listPackages BaseSourceInfo{packages=ps} =
+ forM_ (M.toList ps) $ \(pn, modules) -> do
+   putStrLn . T.unpack $ pn
+   forM_ (M.keys modules) $ \mn -> do
+     putStrLn . T.unpack $ "  " <> mn
