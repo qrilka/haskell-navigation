@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Script for building Kythe index of Haskell packages.
 # See usage below.
 
@@ -40,4 +42,4 @@ done
 # $(stack path --compiler-bin) is also on the PATH to make --system-ghc pick it instead
 # of system ghc (e.g. /usr/bin/ghc).
 PATH="$project_root/wrappers/stack:$(stack path --compiler-bin):$PATH:$(stack path --local-install-root)/bin" \
-  stack --system-ghc build "${@:1}"
+  stack --system-ghc build --force-dirty "${@:1}"
