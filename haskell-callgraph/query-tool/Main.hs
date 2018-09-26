@@ -144,8 +144,8 @@ findPaths g x y =
             Just (fun, _) -> do
               putStrLn . T.unpack $ T.replicate ind "  " <> showRef fun
               forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
-                putStrLn . T.unpack $ T.replicate (ind + 1) "  " <>
-                  "Byte offset " <> T.pack (show offset)
+                putStrLn . T.unpack $ T.replicate ind "  " <>
+                  "<Byte offset " <> T.pack (show offset) <> ">"
 
 countPaths :: PathForest e -> Int
 countPaths xs = sum $ map go xs
@@ -174,8 +174,8 @@ findPathsCollapsed g x y =
             Just (fun, _) -> do
               putStrLn . T.unpack $ T.replicate indent "  " <> showRef fun
               forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
-                putStrLn . T.unpack $ T.replicate (indent + 1) "  " <>
-                  "Byte offset " <> T.pack (show offset)
+                putStrLn . T.unpack $ T.replicate indent "  " <>
+                  "<Byte offset " <> T.pack (show offset) <> ">"
               showPath (indent+1) rest
 
 showRef :: FunctionRef -> Text
@@ -202,7 +202,7 @@ listModule BaseSourceInfo{packages=ps, calls=cs} pname mname = do
                 putStrLn . T.unpack $ "  " <> showRef ref
                 forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
                   putStrLn . T.unpack $ "    " <>
-                    "Byte offset " <> T.pack (show offset)
+                    "<Byte offset " <> T.pack (show offset) <> ">"
             Nothing -> return ()
         UnresolvedRef vname ->
           putStrLn $ "Unresolved " ++ show vname
