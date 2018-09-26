@@ -6,6 +6,7 @@ dependencies:
   - bytestring
   - conduit
   - containers
+  - deepseq
   - extra
   - kythe-importer
   - kythe-proto

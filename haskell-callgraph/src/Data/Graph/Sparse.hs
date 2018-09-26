@@ -13,6 +13,7 @@ module Data.Graph.Sparse
   , PathForest
   ) where
 
+import Control.DeepSeq
 import Data.Store
 import qualified Data.IntMap as IntMap
 import RIO as RIO
@@ -25,15 +26,17 @@ data SparseGraph node edge = SparseGraph
   , nodeIndices :: Map node Int
   } deriving (Eq, Show, Generic)
 
-instance (Ord node, Semigroup edge) => Semigroup (SparseGraph node edge) where
-  (<>) = union
+instance (Ord node, NFData node, NFData edge, Semigroup edge) => Semigroup (SparseGraph node edge) where
+  a <> b = force $ a `union` b
 
-instance (Ord node, Semigroup edge) => Monoid (SparseGraph node edge) where
+instance (Ord node, NFData node, NFData edge, Semigroup edge) => Monoid (SparseGraph node edge) where
   mempty = SparseGraph mempty mempty
   mappend = (<>)
 
 instance (Ord node, Store node, Store edge) =>
          Store (SparseGraph node edge)
+
+instance (NFData node, NFData edge) => NFData (SparseGraph node edge)
 
 fromList :: Ord node => [(node, [(Int, edge)])] -> SparseGraph node edge
 fromList nodes = SparseGraph{..}

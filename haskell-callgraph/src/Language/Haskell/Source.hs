@@ -20,6 +20,7 @@ module Language.Haskell.Source
   ) where
 
 import CallGraph
+import Control.DeepSeq
 import Control.Monad.State.Strict
 import Data.Store
 import Data.Graph
@@ -33,7 +34,11 @@ import RIO.List (find, isSuffixOf, nub, partition)
 import qualified RIO.Map as M
 import qualified RIO.Set as Set
 import qualified RIO.Text as T
+import qualified RIO.Text.Partial as T (breakOnEnd)
 import qualified RIO.Vector as V
+
+deriving instance Generic K.VName
+instance NFData K.VName
 
 type PackageName = Text
 type ModuleName = Text
@@ -50,11 +55,13 @@ instance Store FunctionDefinition
 data SourceLocation = SourceLocation Int deriving (Eq, Show, Generic)
 
 instance Store SourceLocation
+instance NFData SourceLocation
 
 data FunctionCall = FunctionCall !SourceLocation -- Byte offset or line/column
   deriving (Eq, Show, Generic)
 
 instance Store FunctionCall
+instance NFData FunctionCall
 
 type BaseFunctionCallGraph name = SparseGraph name [FunctionCall]
 
@@ -66,6 +73,8 @@ data ModuleInfo name = ModuleInfo
   , modFunctions :: Set name
   } deriving (Eq, Show, Generic)
 
+instance NFData name => NFData (ModuleInfo name)
+
 instance (Ord name, Store name) => Store (ModuleInfo name)
 
 data BaseSourceInfo name = BaseSourceInfo
@@ -73,14 +82,17 @@ data BaseSourceInfo name = BaseSourceInfo
   , packages :: Map PackageName (Map ModuleName (ModuleInfo name))
   } deriving (Eq, Show, Generic)
 
-instance (Ord name) => Semigroup (BaseSourceInfo name) where
+instance (Ord name, NFData name) => Semigroup (BaseSourceInfo name) where
   (<>) si1 si2 =
+    let calls' = calls si1 `union` calls si2
+        packages' = packages si1 <> packages si2
+    in calls' `deepseq` packages' `deepseq`
     BaseSourceInfo
-    { calls = calls si1 `union` calls si2
-    , packages = packages si1 <> packages si2
+    { calls = calls'
+    , packages = packages'
     }
 
-instance (Ord name) => Monoid (BaseSourceInfo name) where
+instance (Ord name, NFData name) => Monoid (BaseSourceInfo name) where
   mempty = BaseSourceInfo mempty mempty
   mappend = (<>)
 
