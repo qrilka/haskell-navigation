@@ -8,6 +8,9 @@ module Data.Graph.Sparse
   , mapNodes
   , lookupNode
   , pathsBetween
+  , pathsForestBetween
+  , PathTree (..)
+  , PathForest
   ) where
 
 import Data.Store
@@ -99,3 +102,27 @@ pathsBetween SparseGraph{..} x y = go x y (Set.singleton x)
         , Set.notMember child visited
         , path <- go child target (Set.insert child visited)
         ]
+
+data PathTree e
+  = PathEnd
+  | PathTree ![(e, PathTree e)]
+  deriving (Show)
+type PathForest e = [PathTree e]
+
+pathsForestBetween :: SparseGraph n e -> Int -> Int -> PathForest (Int, e)
+pathsForestBetween SparseGraph{..} x y = go x y (Set.singleton x)
+  where
+    go source target visited
+      | source == target = [PathEnd]
+      | otherwise =
+        [ PathTree [((child, edge), joinTrees subforest)]
+        | (child, edge) <- maybe [] (IntMap.assocs . snd) $ assocTable V.!? source
+        , Set.notMember child visited
+        , let subforest = go child target (Set.insert child visited)
+        , not $ null subforest
+        ]
+    joinTrees xs = case concat (map pathBranches xs) of
+      [] -> PathEnd
+      ys -> PathTree ys
+    pathBranches PathEnd = []
+    pathBranches (PathTree bs) = bs

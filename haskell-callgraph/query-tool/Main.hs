@@ -26,8 +26,10 @@ data Options = Options
   , optsCommand :: Command
   }
 
+data Collapse = Collapse | DontCollapse
+
 data Command
-  = Paths Text Text
+  = Paths Text Text Collapse
   | Stats
   | ListPackages
   | ListModule Text
@@ -66,6 +68,10 @@ opts = info (options <**> helper)
           <> short 't'
           <> metavar "TGT"
           <> help "Target graph node")
+      <*> flag DontCollapse Collapse
+          (  long "collapse"
+          <> short 'c'
+          <> help "Collapse call path prefixes")
     listModuleCmd = ListModule
       <$> textOption
           (  long "module"
@@ -84,10 +90,12 @@ main = do
   when (V.null . assocTable $ calls si) $
     die "No call graph information was found"
   case optsCommand of
-    Paths sK tK -> do
+    Paths sK tK collapse -> do
       s <- findVertex "source node" sK si
       t <- findVertex "target node" tK si
-      findPaths (calls si) s t
+      case collapse of
+        Collapse -> findPathsCollapsed (calls si) s t
+        DontCollapse -> findPaths (calls si) s t
     Stats -> do
       let graph = calls si
       putStrLn $ "Number of vertices:" ++ show (length $ assocTable graph) ++ "\n" ++
@@ -136,6 +144,37 @@ findPaths g x y =
               forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
                 putStrLn . T.unpack $ T.replicate (ind + 1) "  " <>
                   "Byte offset " <> T.pack (show offset)
+
+countPaths :: PathForest e -> Int
+countPaths xs = sum $ map go xs
+ where
+  go PathEnd = 1
+  go (PathTree subforest) = sum $ map (go . snd) subforest
+
+findPathsCollapsed :: FunctionCallGraph -> Int -> Int -> IO ()
+findPathsCollapsed g x y =
+  case pathsForestBetween g x y of
+    [] -> putStrLn "No paths between nodes"
+    paths -> do
+      putStrLn $ "Found " ++ show (countPaths paths) ++ " path(s):"
+      start <- case assocTable g V.!? x of
+        Nothing -> die "Start node not present in the graph"
+        Just (s, _) -> pure s
+      putStrLn . T.unpack $ showRef start
+      forM_ paths $ showPath 1
+  where
+    showPath _indent PathEnd = pure ()
+    showPath indent (PathTree subforest) =
+      forM_ subforest $ \((n, fCalls), rest) -> do
+        case assocTable g V.!? n of
+            Nothing ->
+              putStrLn . T.unpack $ T.replicate indent "  " <> "<missing node>"
+            Just (fun, _) -> do
+              putStrLn . T.unpack $ T.replicate indent "  " <> showRef fun
+              forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
+                putStrLn . T.unpack $ T.replicate (indent + 1) "  " <>
+                  "Byte offset " <> T.pack (show offset)
+              showPath (indent+1) rest
 
 showRef :: FunctionRef -> Text
 showRef (ResolvedRef fun) =
