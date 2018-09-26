@@ -114,14 +114,16 @@ findVertex needle funTxt BaseSourceInfo {..} = dieIfNothing lookedUp
   where
     dieIfNothing =
       maybe (die $ "Could not find " ++ needle ++ " in the graph") pure
-    lookedUp = do
+    lookedUp = lookupUnresolved <|> lookupResolved
+    termPrefix = "haskell:term:"
+    lookupUnresolved =
+      M.lookup (UnresolvedRef $ termPrefix <> funTxt) (nodeIndices calls)
+    lookupResolved = do
       let colon = ':'
-      ref <- case T.stripPrefix "*" funTxt of
-        Just sign -> pure $ UnresolvedRef sign
-        Nothing ->
-          case T.split (== colon) funTxt of
-            [p, m, f] -> pure $ ResolvedRef (FunctionDefinition p m f)
-            _ ->  Nothing
+      ref <-
+        case T.split (== colon) funTxt of
+          [p, m, f] -> pure $ ResolvedRef (FunctionDefinition p m f)
+          _ -> Nothing
       M.lookup ref (nodeIndices calls)
 
 findPaths :: FunctionCallGraph -> Int -> Int -> IO ()
