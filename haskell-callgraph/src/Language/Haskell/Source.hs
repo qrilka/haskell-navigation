@@ -248,14 +248,18 @@ parseNodeKind "variable" = Just VariableNK
 parseNodeKind _ = Nothing
 
 parsePackageVName :: K.VName -> (PackageName, ModuleName)
-parsePackageVName vname =
-  let parts = T.split (== '-') (vname ^. K.signature)
-  in case reverse parts of
-       [noDashes] -> second (T.drop 1) $ T.break (== ':') noDashes
-       (hashMod:_version:packageRev) ->
-         ( T.intercalate "-" $ reverse packageRev
-         , T.drop 23 hashMod -- 22 chars hash + ':'
-          )
-       _ ->
-         error $
-         "Could not extract package name and module name from " ++ show parts
+parsePackageVName vname
+  | "_main" `T.isSuffixOf` noModule = (noModule, mName)
+  | otherwise =
+    case reverse parts of
+      (hashMod:_version:packageRev) ->
+        ( T.intercalate "-" $ reverse packageRev
+        , T.drop 23 hashMod -- 22 chars hash + ':'
+         )
+      _ ->
+        error $
+        "Could not extract package name and module name from " ++ show parts
+  where
+    sign = vname ^. K.signature
+    (noModule, mName) = first (T.dropEnd 1) $ T.breakOnEnd ":" sign
+    parts = T.split (== '-') sign
