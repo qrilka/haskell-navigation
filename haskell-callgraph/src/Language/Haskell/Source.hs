@@ -266,7 +266,7 @@ parsePackageVName vname
     case reverse parts of
       (hashMod:_version:packageRev) ->
         ( T.intercalate "-" $ reverse packageRev
-        , T.drop 23 hashMod -- 22 chars hash + ':'
+        , mName
          )
       _ ->
         error $
