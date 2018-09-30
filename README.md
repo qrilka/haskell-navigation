@@ -11,7 +11,7 @@ To index a package you need to do the following:
 1. Build this project with `stack build`, so you'll get `query-tool` and
    `kythe-to-call-graph`
 
-2. Build `ghc\_kythe\_wrapper` with `stack build haskell-indexer-pipeline-ghckythe-wrapper`
+2. Build `ghc_kythe_wrapper` with `stack build haskell-indexer-pipeline-ghckythe-wrapper`
    (Stack currently doesn't build Github project packages by default)
 
 3. Index your package with
