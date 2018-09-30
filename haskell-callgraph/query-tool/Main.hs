@@ -98,8 +98,11 @@ main = do
         DontCollapse -> findPaths (calls si) s t
     Stats -> do
       let graph = calls si
-      putStrLn $ "Number of vertices:" ++ show (length $ assocTable graph) ++ "\n" ++
-        "Number of edges:" ++ show (V.sum $ V.map (IntMap.size . snd) $ assocTable graph)
+      putStrLn $ "Number of packages: " ++ show (M.size $ packages si)
+      putStrLn $ "Number of modules: " ++ show (sum $ M.map M.size $ packages si)
+      putStrLn $ "Number of call graph vertices: " ++ show (length $ assocTable graph)
+      putStrLn $ "Number of call graph edges: " ++
+        show (V.sum $ V.map (IntMap.size . snd) $ assocTable graph)
     ListPackages -> do
       listPackages si
     ListModule t -> do
