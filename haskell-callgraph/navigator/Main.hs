@@ -32,7 +32,7 @@ main = do
   g <- readCallGraph optsDir
   when (null . vertices $ cgGraph g) $
     die "No call graph information was found"
-  root <- case cgVertexFromKey g (K.VName optsRoot "" "" "" "" []) of
+  root <- case cgVertexFromKey g (K.VName optsRoot "" "" "" "haskell" []) of
     Just v -> pure v
     Nothing -> die "Root node not found in the graph"
   let l = listChildren g root 0
