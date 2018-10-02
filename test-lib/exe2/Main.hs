@@ -1,3 +1,4 @@
 import B
+import ClassA
 
-main = print $ bFunction1 3 8
+main = print $ functionA (bFunction1 3 8)

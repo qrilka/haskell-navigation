@@ -9,6 +9,7 @@ library:
   exposed-modules:
     - A
     - B
+    - ClassA
 
 executables:
   exe1:
