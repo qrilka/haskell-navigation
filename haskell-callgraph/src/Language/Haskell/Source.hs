@@ -30,7 +30,9 @@ import Language.Kythe.Schema.Typed
 import qualified Proto.Kythe.Proto.Storage as K
 import qualified Proto.Kythe.Proto.Storage_Fields as K
 import RIO
-import RIO.List (find, isSuffixOf, nub, partition)
+import qualified RIO.ByteString as B
+import RIO.Char
+import RIO.List (find, isSuffixOf, nub, partition, scanl', lastMaybe)
 import qualified RIO.Map as M
 import qualified RIO.Set as Set
 import qualified RIO.Text as T
@@ -52,7 +54,11 @@ data FunctionDefinition = FunctionDefinition
 
 instance Store FunctionDefinition
 
-data SourceLocation = SourceLocation Int deriving (Eq, Show, Generic)
+-- line and column start with 1, not 0
+data SourceLocation = SourceLocation
+  { sourceLine :: Int
+  , sourceColumn :: Int
+  } deriving (Eq, Show, Generic)
 
 instance Store SourceLocation
 instance NFData SourceLocation
@@ -169,8 +175,9 @@ fromKCallGraph CallGraph{..} = collect $ execState go noInfo
         partition (\(_, k) -> kind k == FileNK) subKnodes of
         (fKnodes, other) | Just (p, txt) <- getFileInfo
                                             (map snd fKnodes)  -> do
+          let splits = splitFile txt
           functions <- forM other $ \(v', vKnode) ->
-            parseDefinition vKnode v'
+            parseDefinition vKnode v' splits
           let modInfo = ModuleInfo
                 { modPath = p
                 , modText = txt
@@ -197,14 +204,14 @@ fromKCallGraph CallGraph{..} = collect $ execState go noInfo
             Just f -> f ^. K.factValue
             Nothing -> ""
       in (fpath, text)
-    parseDefinition :: KNode -> Vertex -> State Roots K.VName
-    parseDefinition dKnode v = do
+    parseDefinition :: KNode -> Vertex -> LineSplits -> State Roots K.VName
+    parseDefinition dKnode v splits = do
       let (_, _, branches) = cgNodeFromVertex v
           !fCalls = groupSort . flip mapMaybe branches $ \branch -> do
             av <- cgVertexFromKey branch
             aKnode <- join $ knodes V.!? av
             if kind aKnode == AnchorNK
-              then extractCall aKnode av
+              then extractCall aKnode av splits
               else error "bad node kind"
       forM_ fCalls $ \(vn, _) -> do
         let maybeInsertEmpty (Just x) = Just x
@@ -213,8 +220,8 @@ fromKCallGraph CallGraph{..} = collect $ execState go noInfo
       modify' $ second (M.insert (vname dKnode) fCalls)
       return $ vname dKnode
 
-    extractCall :: KNode -> Vertex -> Maybe (K.VName, FunctionCall)
-    extractCall aKnode v = do
+    extractCall :: KNode -> Vertex -> LineSplits -> Maybe (K.VName, FunctionCall)
+    extractCall aKnode v splits = do
       locFact <- findFact locStartFactName (facts aKnode)
       start <- readMaybe (T.unpack . decodeUtf8With lenientDecode $ locFact ^. K.factValue)
       let (_, _, branches) = cgNodeFromVertex v
@@ -223,8 +230,24 @@ fromKCallGraph CallGraph{..} = collect $ execState go noInfo
         [refKey] -> do
           v' <- cgVertexFromKey refKey
           rKnode <- join $ knodes V.!? v'
-          return (vname rKnode, FunctionCall (SourceLocation start))
+          return (vname rKnode, FunctionCall (findLoc start splits))
         x -> error $ "Anchor with bad branches " ++ show (x, facts aKnode)
+
+newtype LineSplits = LineSplits [Int]
+
+findLoc :: Int -> LineSplits -> SourceLocation
+findLoc x (LineSplits splits) = SourceLocation{..}
+  where
+    upToX = takeWhile (x >) splits
+    sourceLine = length upToX
+    sourceColumn = case lastMaybe upToX of
+      Just lineStart -> x - lineStart + 1
+      Nothing -> error "Incorrect source location specified"
+
+splitFile :: ByteString -> LineSplits
+splitFile bs = LineSplits $ scanl' (\p l -> p + B.length l + 1) 0 $ B.split nl bs
+  where
+    nl = fromIntegral $ ord '\n'
 
 parseFacts :: K.VName -> [K.Entry] -> Maybe KNode
 parseFacts vn [] = pure $ KNode VariableNK vn [] -- assuming orphan nodes to be function refs
@@ -264,7 +287,7 @@ parsePackageVName vname
   | "_main" `T.isSuffixOf` noModule = (noModule, mName)
   | otherwise =
     case reverse parts of
-      (hashMod:_version:packageRev) ->
+      (_hashMod:_version:packageRev) ->
         ( T.intercalate "-" $ reverse packageRev
         , mName
          )

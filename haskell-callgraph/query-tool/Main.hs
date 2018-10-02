@@ -146,9 +146,8 @@ findPaths g x y =
               putStrLn . T.unpack $ T.replicate ind "  " <> "<missing node>"
             Just (fun, _) -> do
               putStrLn . T.unpack $ T.replicate ind "  " <> showRef fun
-              forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
-                putStrLn . T.unpack $ T.replicate ind "  " <>
-                  "<Byte offset " <> T.pack (show offset) <> ">"
+              forM_ fCalls $ \(FunctionCall loc) ->
+                putStrLn . T.unpack $ T.replicate ind "  " <> showLoc loc
 
 countPaths :: PathForest e -> Int
 countPaths xs = sum $ map go xs
@@ -176,9 +175,8 @@ findPathsCollapsed g x y =
               putStrLn . T.unpack $ T.replicate indent "  " <> "<missing node>"
             Just (fun, _) -> do
               putStrLn . T.unpack $ T.replicate indent "  " <> showRef fun
-              forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
-                putStrLn . T.unpack $ T.replicate indent "  " <>
-                  "<Byte offset " <> T.pack (show offset) <> ">"
+              forM_ fCalls $ \(FunctionCall loc) ->
+                putStrLn . T.unpack $ T.replicate indent "  " <> showLoc loc
               showPath (indent+1) rest
 
 showRef :: FunctionRef -> Text
@@ -186,6 +184,12 @@ showRef (ResolvedRef fun) =
   functionName fun <> " (package " <> package fun <> ", module " <> module_ fun <> ")"
 showRef (UnresolvedRef urname) =
   "Unresolved " <> urname
+
+showLoc :: SourceLocation -> Text
+showLoc SourceLocation{..} =
+  "<Line " <> T.pack (show sourceLine) <>
+  ", Column " <> T.pack (show sourceColumn) <> ">"
+
 
 listModule :: SourceInfo -> PackageName -> ModuleName -> IO ()
 listModule BaseSourceInfo{packages=ps, calls=cs} pname mname = do
@@ -203,9 +207,8 @@ listModule BaseSourceInfo{packages=ps, calls=cs} pname mname = do
                     die "Inconsistent graph: referenced node was not found"
                   Just (x, _) -> pure x
                 putStrLn . T.unpack $ "  " <> showRef ref
-                forM_ fCalls $ \(FunctionCall (SourceLocation offset)) ->
-                  putStrLn . T.unpack $ "    " <>
-                    "<Byte offset " <> T.pack (show offset) <> ">"
+                forM_ fCalls $ \(FunctionCall loc) ->
+                  putStrLn . T.unpack $ "    " <> showLoc loc
             Nothing -> return ()
         UnresolvedRef vname ->
           putStrLn $ "Unresolved " ++ show vname
