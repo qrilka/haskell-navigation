@@ -21,6 +21,9 @@ if [[ "${@#--make}" != "$@" ]]; then
   PKG=${PWD##*/}
   log " == pkg: $PKG"
   EXE_FOUND=false
+  # GHC is invoked twice for executable modules, first with "-no-link" but with
+  # no "-o" argument specified, this flag prevents that run from overwriting
+  # librarie entries file
   NO_LINK=false
   for i in "$@"
   do
@@ -28,7 +31,7 @@ if [[ "${@#--make}" != "$@" ]]; then
     then
       EXE="$(basename $i)"
       EXE_SUFFIX="-$EXE"
-      RENAME_MAIN="--rename_main $EXE"
+      RENAME_MAIN="--rename_main $PKG$EXE"
       log " == exe-suffix: $EXE_SUFFIX"
       break
     elif [ "$i" = "-o" ]; then
