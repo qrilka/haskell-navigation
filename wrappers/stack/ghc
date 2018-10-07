@@ -31,7 +31,7 @@ if [[ "${@#--make}" != "$@" ]]; then
     then
       EXE="$(basename $i)"
       EXE_SUFFIX="-$EXE"
-      RENAME_MAIN="--rename_main $PKG$EXE"
+      RENAME_MAIN="--rename_main $PKG$EXE_SUFFIX"
       log " == exe-suffix: $EXE_SUFFIX"
       break
     elif [ "$i" = "-o" ]; then
