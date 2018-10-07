@@ -51,8 +51,8 @@ executables:
     dependencies:
       - haskell-callgraph
       - optparse-applicative
-  navigator:
-    source-dirs: navigator
+  kythe-navigator:
+    source-dirs: kythe-navigator
     dependencies:
       - brick
       - haskell-callgraph

@@ -17,8 +17,8 @@ data Options = Options
 
 opts = info (options <**> helper)
        ( fullDesc
-       <> progDesc "Output Kythe proto entries file as JSON"
-       <> header "entries-to-json - json export of kythe entries" )
+       <> progDesc "CLI UI tool to navigate raw Kythe call graph"
+       <> header "kythe-navigator - navigate call graph of kythe entries" )
   where
     options = Options
       <$> strOption
