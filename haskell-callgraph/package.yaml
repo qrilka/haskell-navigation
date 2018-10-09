@@ -51,6 +51,18 @@ executables:
     dependencies:
       - haskell-callgraph
       - optparse-applicative
+  navigator:
+    source-dirs: navigator
+    dependencies:
+      - brick
+      - haskell-callgraph
+#      - kythe-importer
+      - microlens
+      - optparse-applicative
+      - vector
+      - vty
+    main: Main.hs
+    ghc-options: [-threaded]
   kythe-navigator:
     source-dirs: kythe-navigator
     dependencies:

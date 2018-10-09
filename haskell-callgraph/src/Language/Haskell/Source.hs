@@ -7,6 +7,7 @@ module Language.Haskell.Source
   ( PackageName
   , ModuleName
   , ModuleInfo(..)
+  , FunctionName
   , FunctionDefinition(..)
   , FunctionCall(..)
   , SourceLocation(..)
