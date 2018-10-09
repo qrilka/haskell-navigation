@@ -221,9 +221,9 @@ renderPath (Path pkg mpath) =
             Just (RefPath  refref callpath) ->
               case callpath of
                 Nothing ->
-                  (Just "      ", renderRef refref)
+                  (Just "      -> ", renderRef refref)
                 Just (CallPath srcLoc) ->
-                  (Just "        -> ", renderLoc srcLoc)
+                  (Just "           ", renderLoc srcLoc)
 
 renderRef :: FunctionRef -> Text
 renderRef (UnresolvedRef ur) = ur
